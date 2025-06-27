@@ -7,6 +7,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/per1Peteia/learn-pub-sub-starter/internal/pubsub"
+	"github.com/per1Peteia/learn-pub-sub-starter/internal/routing"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -22,6 +24,15 @@ func main() {
 
 	defer conn.Close()
 	fmt.Println("Connection successful")
+
+	ch, err := conn.Channel()
+	if err != nil {
+		log.Fatalf("Error channeling: %v", err)
+	}
+	err = pubsub.PublishJSON(ch, string(routing.ExchangePerilDirect), string(routing.PauseKey), routing.PlayingState{IsPaused: true})
+	if err != nil {
+		log.Fatalf("Error publishing message: %v", err)
+	}
 
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
