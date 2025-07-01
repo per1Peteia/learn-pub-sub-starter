@@ -25,6 +25,11 @@ func main() {
 	defer conn.Close()
 	fmt.Println("Connection successful")
 
+	ch, err := conn.Channel()
+	if err != nil {
+		log.Fatalf("Error channeling: %v", err)
+	}
+
 	userName, err := gamelogic.ClientWelcome()
 	if err != nil {
 		log.Fatalf("Error getting username: %v", err)
@@ -37,8 +42,22 @@ func main() {
 		conn,
 		routing.ExchangePerilDirect,
 		fmt.Sprintf("pause.%s", userName),
-		routing.PauseKey, 1,
+		routing.PauseKey,
+		1,
 		handlerPause(gameState),
+	)
+	if err != nil {
+		log.Fatalf("error subscribing: %v", err)
+	}
+
+	// detect player moves
+	err = pubsub.SubscribeJSON(
+		conn,
+		routing.ExchangePerilTopic,
+		fmt.Sprintf("%s.%s", routing.ArmyMovesPrefix, userName),
+		fmt.Sprintf("%s.*", routing.ArmyMovesPrefix),
+		1,
+		handlerMove(gameState),
 	)
 	if err != nil {
 		log.Fatalf("error subscribing: %v", err)
@@ -56,11 +75,16 @@ func main() {
 				log.Printf("%v", err)
 			}
 		case "move":
-			_, err := gameState.CommandMove(in)
+			move, err := gameState.CommandMove(in)
 			if err != nil {
 				log.Printf("%v", err)
 			}
-			fmt.Println("")
+
+			err = pubsub.PublishJSON(ch, routing.ExchangePerilTopic, fmt.Sprintf("%s.%s", routing.ArmyMovesPrefix, userName), move)
+			if err != nil {
+				log.Printf("%v", err)
+			}
+			fmt.Println("Army moved successfully...")
 		case "status":
 			gameState.CommandStatus()
 		case "help":
