@@ -3,8 +3,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"os"
-	"os/signal"
 
 	"github.com/per1Peteia/learn-pub-sub-starter/internal/gamelogic"
 
@@ -32,13 +30,49 @@ func main() {
 		log.Fatalf("Error getting username: %v", err)
 	}
 
-	_, _, err = pubsub.DeclareAndBind(conn, routing.ExchangePerilDirect, fmt.Sprintf("%s.%s", routing.PauseKey, userName), routing.PauseKey, 1)
+	gameState := gamelogic.NewGameState(userName)
+
+	// detect pauses
+	err = pubsub.SubscribeJSON(
+		conn,
+		routing.ExchangePerilDirect,
+		fmt.Sprintf("pause.%s", userName),
+		routing.PauseKey, 1,
+		handlerPause(gameState),
+	)
 	if err != nil {
-		log.Fatalf("Error declaring and binding queue to channel: %v", err)
+		log.Fatalf("error subscribing: %v", err)
 	}
 
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, os.Interrupt)
-	<-signalChan
-	fmt.Println("RabbitMQ connection closed.")
+	for {
+		in := gamelogic.GetInput()
+		if len(in) == 0 {
+			continue
+		}
+		switch in[0] {
+		case "spawn":
+			err := gameState.CommandSpawn(in)
+			if err != nil {
+				log.Printf("%v", err)
+			}
+		case "move":
+			_, err := gameState.CommandMove(in)
+			if err != nil {
+				log.Printf("%v", err)
+			}
+			fmt.Println("")
+		case "status":
+			gameState.CommandStatus()
+		case "help":
+			gamelogic.PrintClientHelp()
+		case "spam":
+			fmt.Println("Spamming not allowed yet")
+		case "quit":
+			gamelogic.PrintQuit()
+			return
+		default:
+			fmt.Println("Unknown input")
+			continue
+		}
+	}
 }

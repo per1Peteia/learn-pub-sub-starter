@@ -3,18 +3,25 @@ package pubsub
 import (
 	"context"
 	"encoding/json"
+	"log"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-type simpleQueueType int
+type SimpleQueueType int
 
 const (
-	durableQueue simpleQueueType = iota
+	durableQueue SimpleQueueType = iota
 	transientQueue
 )
 
-func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
+func PublishJSON[T any](
+	ch *amqp.Channel,
+	exchange,
+	key string,
+	val T,
+) error {
+
 	rawJSON, err := json.Marshal(val)
 	if err != nil {
 		return err
@@ -38,12 +45,49 @@ func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
 	return nil
 }
 
+func SubscribeJSON[T any](
+	conn *amqp.Connection,
+	exchange,
+	queueName,
+	key string,
+	queueType SimpleQueueType, // an enum to represent "durable" or "transient"
+	handler func(T),
+) error {
+
+	ch, q, err := DeclareAndBind(conn, exchange, queueName, key, queueType)
+	if err != nil {
+		return err
+	}
+
+	delivery, err := ch.Consume(q.Name, "", false, false, false, false, nil)
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		for msg := range delivery {
+			var body T
+			if err := json.Unmarshal(msg.Body, &body); err != nil {
+				log.Fatalf("error unmarshaling: %v", err)
+			}
+
+			handler(body)
+
+			if err = msg.Ack(false); err != nil {
+				log.Fatalf("error ack: %v", err)
+			}
+		}
+	}()
+
+	return nil
+}
+
 func DeclareAndBind(
 	conn *amqp.Connection,
 	exchange,
 	queueName,
 	key string,
-	queueType simpleQueueType, // an enum to represent "durable" or "transient"
+	queueType SimpleQueueType, // an enum to represent "durable" or "transient"
 ) (*amqp.Channel, amqp.Queue, error) {
 	ch, err := conn.Channel()
 	if err != nil {
