@@ -3,9 +3,19 @@ package pubsub
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 
+	"github.com/per1Peteia/learn-pub-sub-starter/internal/routing"
 	amqp "github.com/rabbitmq/amqp091-go"
+)
+
+type Acktype int
+
+const (
+	Ack Acktype = iota
+	NackRequeue
+	NackDiscard
 )
 
 type SimpleQueueType int
@@ -51,7 +61,7 @@ func SubscribeJSON[T any](
 	queueName,
 	key string,
 	queueType SimpleQueueType, // an enum to represent "durable" or "transient"
-	handler func(T),
+	handler func(T) Acktype,
 ) error {
 
 	ch, q, err := DeclareAndBind(conn, exchange, queueName, key, queueType)
@@ -71,10 +81,24 @@ func SubscribeJSON[T any](
 				log.Fatalf("error unmarshaling: %v", err)
 			}
 
-			handler(body)
+			msgHandlingStatus := handler(body)
 
-			if err = msg.Ack(false); err != nil {
-				log.Fatalf("error ack: %v", err)
+			switch msgHandlingStatus {
+			case Ack:
+				if err := msg.Ack(false); err != nil {
+					log.Fatalf("error ack: %v", err)
+				}
+				fmt.Println("message ack'd")
+			case NackRequeue:
+				if err := msg.Nack(false, true); err != nil {
+					log.Fatalf("error nack: %v", err)
+				}
+				fmt.Println("message nack'd reqeue")
+			case NackDiscard:
+				if err := msg.Nack(false, false); err != nil {
+					log.Fatalf("error nack: %v", err)
+				}
+				fmt.Println("message nack'd discard")
 			}
 		}
 	}()
@@ -108,7 +132,7 @@ func DeclareAndBind(
 		exclusive = true
 	}
 
-	q, err := ch.QueueDeclare(queueName, isDurable, autoDelete, exclusive, false, nil)
+	q, err := ch.QueueDeclare(queueName, isDurable, autoDelete, exclusive, false, amqp.Table{"x-dead-letter-exchange": routing.ExchangeDLX})
 	if err != nil {
 		return &amqp.Channel{}, amqp.Queue{}, err
 	}
