@@ -29,15 +29,16 @@ func main() {
 		log.Fatalf("Error channeling: %v", err)
 	}
 
-	_, _, err = pubsub.DeclareAndBind(
+	err = pubsub.SubscribeGob(
 		conn,
 		routing.ExchangePerilTopic,
 		routing.GameLogSlug,
 		"game_logs.*",
 		0,
+		handlerLog(),
 	)
 	if err != nil {
-		log.Fatalf("Error binding: %v", err)
+		log.Fatalf("Error subscribing to log queue: %v", err)
 	}
 
 	for {

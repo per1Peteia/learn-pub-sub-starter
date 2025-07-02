@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"strconv"
 
 	"github.com/per1Peteia/learn-pub-sub-starter/internal/gamelogic"
 
@@ -103,7 +104,19 @@ func main() {
 		case "help":
 			gamelogic.PrintClientHelp()
 		case "spam":
-			fmt.Println("Spamming not allowed yet")
+			if len(in) < 2 {
+				log.Printf("must provide spam amount")
+				continue
+			}
+			spamAmount, err := strconv.Atoi(in[1])
+			if err != nil {
+				log.Println(err.Error())
+			}
+
+			for i := 0; i < spamAmount; i++ {
+				badLog := gamelogic.GetMaliciousLog()
+				publishGameLog(ch, gameState.GetUsername(), badLog)
+			}
 		case "quit":
 			gamelogic.PrintQuit()
 			return

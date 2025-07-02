@@ -51,6 +51,55 @@ func PublishGob[T any](
 	return nil
 }
 
+func SubscribeGob[T any](
+	conn *amqp.Connection,
+	exchange,
+	queueName,
+	key string,
+	queueType SimpleQueueType,
+	handler func(T) Acktype,
+) error {
+	ch, q, err := DeclareAndBind(conn, exchange, queueName, key, queueType)
+	if err != nil {
+		return err
+	}
+
+	delivery, err := ch.Consume(q.Name, "", false, false, false, false, nil)
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		for msg := range delivery {
+			var payload T
+			buf := bytes.NewBuffer(msg.Body)
+			if err := gob.NewDecoder(buf).Decode(&payload); err != nil {
+				log.Fatalf("error decoding: %v", err)
+			}
+
+			msgHandlingStatus := handler(payload)
+
+			switch msgHandlingStatus {
+			case Ack:
+				if err := msg.Ack(false); err != nil {
+					log.Fatalf("error ack: %v", err)
+				}
+			case NackRequeue:
+				if err := msg.Nack(false, true); err != nil {
+					log.Fatalf("error nack: %v", err)
+				}
+			case NackDiscard:
+				if err := msg.Nack(false, false); err != nil {
+					log.Fatalf("error nack: %v", err)
+				}
+			}
+		}
+	}()
+
+	return nil
+
+}
+
 func PublishJSON[T any](
 	ch *amqp.Channel,
 	exchange,
