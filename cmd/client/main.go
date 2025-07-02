@@ -57,7 +57,20 @@ func main() {
 		fmt.Sprintf("%s.%s", routing.ArmyMovesPrefix, userName),
 		fmt.Sprintf("%s.*", routing.ArmyMovesPrefix),
 		1,
-		handlerMove(gameState),
+		handlerMove(gameState, ch),
+	)
+	if err != nil {
+		log.Fatalf("error subscribing: %v", err)
+	}
+
+	// detect wars
+	err = pubsub.SubscribeJSON(
+		conn,
+		routing.ExchangePerilTopic,
+		"war",
+		fmt.Sprintf("%s.*", routing.WarRecognitionsPrefix),
+		0,
+		handlerWar(gameState),
 	)
 	if err != nil {
 		log.Fatalf("error subscribing: %v", err)
